@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
-	kafka "github.com/segmentio/kafka-go"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
+	kafka "github.com/segmentio/kafka-go"
 )
-import "net/http"
 
 type Widget struct {
 	Name   string `form:"name"`
@@ -130,14 +131,14 @@ func apiServer(pingOnly bool) {
 			log.Println(error)
 		}
 
-		r.GET("/widgets/", func(c *gin.Context) {
+		r.GET("/kafka/", func(c *gin.Context) {
 			list := make([]Widget, 0, len(myWidgets))
 			for _, w := range myWidgets {
 				list = append(list, w)
 			}
 			c.JSON(http.StatusOK, list)
 		})
-		r.POST("/widgets/", func(c *gin.Context) {
+		r.POST("/kafka/", func(c *gin.Context) {
 			var widget Widget
 			if c.BindJSON(&widget) == nil {
 				if widget.Name == "send" {
@@ -150,7 +151,7 @@ func apiServer(pingOnly bool) {
 				c.JSON(http.StatusOK, widget)
 			}
 		})
-		r.GET("/widgets/:id", func(c *gin.Context) {
+		r.GET("/kafka/:id", func(c *gin.Context) {
 			id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 			widget, found := myWidgets[id]
 			if found {

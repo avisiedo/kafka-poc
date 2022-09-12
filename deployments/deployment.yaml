@@ -2,12 +2,12 @@
 apiVersion: v1
 kind: Template
 metadata:
-  name: widgets
+  name: kafka
 objects:
 - apiVersion: cloud.redhat.com/v1alpha1
   kind: ClowdApp
   metadata:
-    name: widgets
+    name: kafka
   spec:
     envName: ${ENV_NAME}
     testing:
@@ -19,7 +19,7 @@ objects:
       webServices:
         public:
           enabled: true
-          apiPath: widgets
+          apiPath: kafka
       podSpec:
         image: ${IMAGE}:${IMAGE_TAG}
         livenessProbe:
@@ -101,13 +101,13 @@ objects:
             value: "true"
     kafkaTopics:
     - topicName: repos.created
-      partitions: 3
-      replicas: 3
+      partitions: 1
+      replicas: 1
 parameters:
 - name: ENV_NAME
   required: true
 - name: IMAGE
-  value: quay.io/jlsherri/widget-app
+  required: true
 - name: IMAGE_TAG
   required: true
 

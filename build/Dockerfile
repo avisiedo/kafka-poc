@@ -5,17 +5,18 @@ COPY . .
 
 USER 0
 
-RUN go get -d ./... && \
-    go build -o widgets  server.go
+# RUN go get -d ./... && \
+#     go build -o widgets  server.go
+RUN make build
 
-RUN cp /go/src/app/widgets /usr/bin/
 
 FROM registry.redhat.io/ubi8/ubi-minimal:8.5
 
 WORKDIR /
 
-COPY --from=builder /go/src/app/widgets ./widgets
+COPY --from=builder /go/src/app/release/kafka ./kafka
 
 USER 1001
 
-CMD ["/widgets"]
+CMD ["/kafka"]
+
