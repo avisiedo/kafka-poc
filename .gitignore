@@ -1,2 +1,5 @@
 .idea
 server
+mk/private.mk
+.venv
+release
