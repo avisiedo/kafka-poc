@@ -3,3 +3,5 @@
 ./build
 mk/private.mk
 .venv
+configs/bonfire-local.yaml
+

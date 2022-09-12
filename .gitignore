@@ -3,3 +3,4 @@ server
 mk/private.mk
 .venv
 release
+configs/bonfire-local.yaml
