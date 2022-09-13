@@ -14,9 +14,9 @@ FROM registry.redhat.io/ubi8/ubi-minimal:8.5
 
 WORKDIR /
 
-COPY --from=builder /go/src/app/release/kafka ./kafka
+COPY --from=builder /go/src/app/release/kafka /widgets
 
 USER 1001
 
-CMD ["/kafka"]
+CMD ["/widgets"]
 
