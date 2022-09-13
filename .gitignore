@@ -4,3 +4,6 @@ mk/private.mk
 .venv
 release
 configs/bonfire-local.yaml
+
+# Visual Studio Code temporary debug binary
+**/__debug_bin
