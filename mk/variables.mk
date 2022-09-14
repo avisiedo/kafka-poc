@@ -22,7 +22,7 @@ APP_COMPONENT=kafka
 ## Binary output
 # The directory where golang will output the
 # built binaries
-GO_OUTPUT ?= $(PROJECT_DIR)/release
+GO_OUTPUT ?= $(PROJECT_DIR)/bin
 
 
 ## Container variables
@@ -32,10 +32,14 @@ QUAY_USER ?= $(USER)
 # Context directory to be used as base for building the container
 DOCKER_CONTEXT_DIR ?= $(PROJECT_DIR)
 # Path to the main project Dockerfile file
-DOCKER_DOCKERFILE ?= build/Dockerfile
+DOCKER_DOCKERFILE ?= builds/main/Dockerfile
 # Base image name
 DOCKER_IMAGE_BASE ?= quay.io/$(firstword $(subst +, ,$(QUAY_USER)))/$(APP_NAME)-$(APP_COMPONENT)
 # Default image tag is set to the short git hash of the repo
 DOCKER_IMAGE_TAG ?= $(shell git rev-parse --short HEAD)
 # Compose the container image with all the above
 DOCKER_IMAGE ?= $(DOCKER_IMAGE_BASE):$(DOCKER_IMAGE_TAG)
+
+# The kafka topics used by the application, so they are
+# created when running the local kafka instance in containers
+KAFKA_TOPICS ?= repos.created

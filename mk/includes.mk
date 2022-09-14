@@ -30,3 +30,6 @@ include mk/meta-docker.mk
 include mk/docker.mk
 include mk/meta-ephemeral.mk
 include mk/ephemeral.mk
+include mk/meta-kafka.mk
+include mk/kafka.mk
+

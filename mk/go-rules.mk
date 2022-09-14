@@ -13,7 +13,10 @@ MOD_VENDOR ?= -mod vendor
 endif
 
 .PHONY: build
-build: $(patsubst cmd/%,$(GO_OUTPUT)/%,$(wildcard cmd/*)) ## Build binaries
+build: $(GO_OUTPUT) $(patsubst cmd/%,$(GO_OUTPUT)/%,$(wildcard cmd/*)) ## Build binaries
+
+$(GO_OUTPUT):
+	mkdir -p "$(GO_OUTPUT)"
 
 # export CGO_ENABLED
 # $(GO_OUTPUT)/%: CGO_ENABLED=0
@@ -28,7 +31,7 @@ clean: ## Clean binaries and testbin generated
 
 .PHONY: run
 run: build ## Run the service locally
-	"$(GO_OUTPUT)/content-sources"
+	"$(GO_OUTPUT)/kafka"
 
 .PHONY: tidy
 tidy:
