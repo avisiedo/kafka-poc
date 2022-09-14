@@ -1,0 +1,25 @@
+
+### Ping
+
+GET http://localhost:8000/ping
+
+
+### Write message
+
+POST http://localhost:8000/kafka/
+
+{
+    "url": "https://www.google.com",
+    "count": 29,
+    "status": "Valid"
+}
+
+### Read message
+
+GET http://localhost:8000/kafka/7887
+
+
+### Read all the messages
+
+GET http://localhost:8000/kafka/
+
