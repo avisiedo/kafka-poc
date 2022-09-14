@@ -2,8 +2,13 @@
 server
 mk/private.mk
 .venv
-release
+bin
 configs/bonfire-local.yaml
 
-# Visual Studio Code temporary debug binary
+# Visual Studio Code IDE related files
 **/__debug_bin
+.vscode
+
+# Kafka data directory
+tests/data/kafka
+
