@@ -9,6 +9,9 @@ GET http://localhost:8000/ping
 POST http://localhost:8000/kafka/
 
 {
+    "x-rh-identity": "eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciwiYWNjb3VudF9udW1iZXIiOiI5NDc5MjMifX0=",
+    "x-rh-insights-request-id": "value",
+    "state": "Request",
     "url": "https://www.google.com",
     "count": 29,
     "status": "Valid"

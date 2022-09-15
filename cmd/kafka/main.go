@@ -2,34 +2,29 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	"my-test-app/pkg/event/message"
+	"my-test-app/pkg/event/schema"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
 	kafka "github.com/segmentio/kafka-go"
 )
 
-type MessageUpdateStatus struct {
-	RepositoryURL   string `json:"url"`
-	RepositoryCount int    `json:"count"`
-	Status          string `json:"status"`
-	Comment         string `json:"comment"`
-}
+var schemas schema.SchemaMap
 
-type MessageKey struct {
-	Id int64 `json:"id"`
-}
 type Widget struct {
-	Key     MessageKey
-	Payload MessageUpdateStatus
+	Header  message.HeaderMessageJson
+	Payload message.IntrospectRequestMessageJson
 }
 
 func getUrl() (string, error) {
@@ -129,7 +124,24 @@ func sendMessage(context context.Context, writer *kafka.Writer, widget *Widget) 
 	if widget == nil {
 		return fmt.Errorf("widget is nil")
 	}
-	if header, err = json.Marshal(widget.Key); err != nil {
+
+	// Validate Header
+	if err = schema.ValidateWithSchemaAndInterface(
+		schemas[schema.SchemaHeaderKey],
+		widget.Header,
+	); err != nil {
+		return fmt.Errorf("[sendMessage] Header failed validation: %w", err)
+	}
+	// Validate Payload
+	if err = schema.ValidateWithSchemaAndInterface(
+		schemas[schema.SchemaRequestKey],
+		widget.Payload,
+	); err != nil {
+		return fmt.Errorf("[sendMessage] Payload failed validation: %w", err)
+	}
+
+	// Compose message
+	if header, err = json.Marshal(widget.Header); err != nil {
 		return err
 	}
 	if payload, err = json.Marshal(widget.Payload); err != nil {
@@ -139,6 +151,8 @@ func sendMessage(context context.Context, writer *kafka.Writer, widget *Widget) 
 		Key:   header,
 		Value: payload,
 	}
+
+	// Write message to the broker
 	if err = writer.WriteMessages(context, msg); err != nil {
 		return err
 	}
@@ -148,6 +162,51 @@ func sendMessage(context context.Context, writer *kafka.Writer, widget *Widget) 
 	// } else {
 	// 	log.Println("clowder disabled")
 	// }
+}
+
+// type KafkaConsumer struct {
+// 	Context context.Context
+// 	Reader  kafka.Reader
+// }
+
+// func (k *KafkaConsumer)ReadMessage()
+
+func readMessage(c context.Context, reader *kafka.Reader) (*Widget, error) {
+	var (
+		err    error
+		msg    kafka.Message
+		widget *Widget
+	)
+	if c == nil {
+		return nil, fmt.Errorf("[readMessage] context is nil")
+	}
+	if msg, err = reader.ReadMessage(c); err != nil {
+		return nil, err
+	}
+	widget = &Widget{}
+	if err = json.Unmarshal(msg.Key, &widget.Header); err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(msg.Value, &widget.Payload); err != nil {
+		return nil, err
+	}
+
+	// Validate Header
+	if err = schema.ValidateWithSchemaAndInterface(
+		schemas[schema.SchemaHeaderKey],
+		widget.Header,
+	); err != nil {
+		return nil, fmt.Errorf("[readMessage] Header failed validation: %w", err)
+	}
+	// Validate Payload
+	if err = schema.ValidateWithSchemaAndInterface(
+		schemas[schema.SchemaRequestKey],
+		widget.Payload,
+	); err != nil {
+		return nil, fmt.Errorf("[readMessage] Payload failed validation: %w", err)
+	}
+
+	return widget, nil
 }
 
 func listener() {
@@ -215,41 +274,52 @@ func apiServer(pingOnly bool) {
 
 		r.GET("/kafka/", func(c *gin.Context) {
 			var (
-				msg    kafka.Message
+				// msg    kafka.Message
 				err    error
-				widget Widget
+				widget *Widget
 			)
-			if msg, err = kafkaReader.ReadMessage(c); err != nil {
+			if widget, err = readMessage(c, kafkaReader); err != nil {
 				c.AbortWithError(http.StatusNoContent, err)
 				return
 			}
-			if err = json.Unmarshal(msg.Key, &widget.Key); err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
-				return
-			}
-			if err = json.Unmarshal(msg.Value, &widget.Payload); err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
-				return
-			}
+			// if msg, err = kafkaReader.ReadMessage(c); err != nil {
+			// 	c.AbortWithError(http.StatusNoContent, err)
+			// 	return
+			// }
+			// if err = json.Unmarshal(msg.Key, &widget.Key); err != nil {
+			// 	c.AbortWithError(http.StatusInternalServerError, err)
+			// 	return
+			// }
+			// if err = json.Unmarshal(msg.Value, &widget.Payload); err != nil {
+			// 	c.AbortWithError(http.StatusInternalServerError, err)
+			// 	return
+			// }
 			c.JSON(http.StatusOK, widget)
 		})
 		r.POST("/kafka/", func(c *gin.Context) {
-			var widget Widget
+			var (
+				widget            Widget
+				headerSerialized  []byte
+				payloadSerialized []byte
+			)
 			if err := c.BindJSON(&widget.Payload); err != nil {
 				c.JSON(http.StatusBadRequest, err.Error())
 				return
 			}
-			if widget.Key.Id == 0 {
-				widget.Key.Id = int64(rand.Intn(10000))
+
+			if widget.Header.Uuid == "" {
+				widget.Header.Uuid = uuid.NewString()
 			}
-			if widget.Payload.Comment == "" {
-				widget.Payload.Comment = fmt.Sprintf("message id = %d", widget.Key.Id)
-			}
+			widget.Header.Event = "Request"
+			widget.Payload.XRhInsightsRequestId = fmt.Sprintf("%s", widget.Header.Uuid)
 			sendMessage(c, kafkaWriter, &widget)
-			log.Printf("Id = %d", widget.Key.Id)
-			log.Printf("Payload: { url: '%s', count: %d, status: '%s' }", widget.Payload.RepositoryURL, widget.Payload.RepositoryCount, widget.Payload.Status)
-			myWidgets[widget.Key.Id] = widget
-			c.Header("Location", fmt.Sprintf("/kafka/%d", widget.Key.Id))
+
+			headerSerialized, err = json.Marshal(widget.Header)
+			payloadSerialized, err = json.Marshal(widget.Header)
+			log.Printf("header: %s", string(headerSerialized))
+			log.Printf("Payload: %s", string(payloadSerialized))
+
+			c.Header("Location", fmt.Sprintf("/kafka/%s", widget.Header.Uuid))
 
 			c.JSON(http.StatusAccepted, widget)
 		})
@@ -268,11 +338,18 @@ func apiServer(pingOnly bool) {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "listener" {
+		if err := schema.UnmarshallSchemas(&schemas); err != nil {
+			panic("[main] error at UnmarshallSchemas")
+		}
 		go func() {
 			apiServer(true)
 		}()
 		listener()
 	} else {
+		if err := schema.UnmarshallSchemas(&schemas); err != nil {
+			err = fmt.Errorf("[main] error at UnmarshallSchemas: %w", err)
+			panic(err)
+		}
 		apiServer(false)
 	}
 }

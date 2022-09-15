@@ -12,3 +12,7 @@ configs/bonfire-local.yaml
 # Kafka data directory
 tests/data/kafka
 
+# Generated files
+pkg/event/schema/*.json
+pkg/event/message/*.types.gen.go
+

@@ -12,12 +12,21 @@ else
 MOD_VENDOR ?= -mod vendor
 endif
 
+# Meta rule to add dependency on the binaries generated
 .PHONY: build
 build: $(GO_OUTPUT) $(patsubst cmd/%,$(GO_OUTPUT)/%,$(wildcard cmd/*)) ## Build binaries
+
+# Rebuild binaries when some source code change
+$(patsubst cmd/%,$(GO_OUTPUT)/%,$(wildcard cmd/*)): $(shell find $(PROJECT_DIR)/cmd -type f -name '*.go') $(shell find $(PROJECT_DIR)/pkg -type f -name '*.go')
+
+# Regenerate code when message schema change
+$(shell find "$(EVENT_MESSAGE_DIR)" -type f -name '*.go'): $(SCHEMA_YAML_FILES)
+	$(MAKE) gen-event-messages
 
 $(GO_OUTPUT):
 	mkdir -p "$(GO_OUTPUT)"
 
+# General rule which generate a binary per cmd/ directory found
 # export CGO_ENABLED
 # $(GO_OUTPUT)/%: CGO_ENABLED=0
 $(GO_OUTPUT)/%: cmd/%/main.go
