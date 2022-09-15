@@ -75,3 +75,12 @@ kafka-topics-describe:  ## Execute kafka-topics.sh for KAFKA_TOPICS
 	for topic in $(KAFKA_TOPICS); do \
 	    $(DOCKER) exec kafka /opt/kafka/bin/kafka-topics.sh --describe --topic $$topic --bootstrap-server localhost:9092; \
 	done
+
+.PHONY: kafka-topic-consume
+kafka-topic-consume: KAFKA_TOPIC ?= $(firstword $(KAFKA_TOPICS))
+kafka-topic-consume:  ## Execute kafka-console-consume.sh inside the kafka container for KAFKA_TOPIC (singular)
+	@[ "$(KAFKA_TOPIC)" != "" ] || { echo "error:KAFKA_TOPIC cannot be empty"; exit 1; }
+	$(DOCKER) exec kafka \
+	  /opt/kafka/bin/kafka-console-consumer.sh \
+	  --topic $(KAFKA_TOPIC) \
+	  --bootstrap-server localhost:9092
