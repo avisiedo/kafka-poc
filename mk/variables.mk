@@ -42,4 +42,4 @@ DOCKER_IMAGE ?= $(DOCKER_IMAGE_BASE):$(DOCKER_IMAGE_TAG)
 
 # The kafka topics used by the application, so they are
 # created when running the local kafka instance in containers
-KAFKA_TOPICS ?= repos.created
+KAFKA_TOPICS ?= repos-created
