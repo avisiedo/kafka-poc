@@ -8,6 +8,9 @@ NAMESPACE ?= $(shell oc project -q 2>/dev/null)
 export NAMESPACE
 export APP
 
+# default minimal managed-kafka real-managed-kafka
+EPHEMERAL_POOL ?= managed-kafka
+
 
 # https://consoledot.pages.redhat.com/docs/dev/getting-started/ephemeral/onboarding.html
 .PHONY: ephemeral-login
@@ -72,8 +75,7 @@ ephemeral-undeploy: ## Undeploy application from the current namespace
 .PHONY: ephemeral-namespace-reserve
 ephemeral-namespace-reserve:  ## Reserve a namespace (requires ephemeral environment)
 	command -v bonfire 1>/dev/null 2>/dev/null || { echo "error:bonfire is not available in this environment"; exit 1; }
-#oc project "$(shell bonfire namespace reserve --pool managed-kafka 2>/dev/null)"
-	oc project "$(shell source $(PROJECT_DIR)/.venv/bin/activate && bonfire namespace reserve 2>/dev/null)"
+	oc project "$(shell source $(PROJECT_DIR)/.venv/bin/activate && bonfire namespace reserve --pool managed-kafka 2>/dev/null)"
 
 .PHONY: ephemeral-namespace-release-all
 ephemeral-namespace-release-all: ## Release all namespace reserved by us (requires ephemeral environment)
