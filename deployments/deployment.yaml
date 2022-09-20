@@ -100,7 +100,7 @@ objects:
           - name: CLOWDER_ENABLED
             value: "true"
     kafkaTopics:
-    - topicName: repos.created
+    - topicName: repos-introspect
       partitions: 1
       replicas: 1
 parameters:
