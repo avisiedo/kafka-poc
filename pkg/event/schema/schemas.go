@@ -1,14 +1,33 @@
 package schema
 
+// Tools related with schema validation
+// http://json-schema.org
+// http://json-schema.org/latest/json-schema-core.html
+// http://json-schema.org/latest/json-schema-validation.html
+//
+// Fancy online tools
+// https://www.liquid-technologies.com/online-json-to-schema-converter
+// https://app.quicktype.io/
+//
+// To generate the code from the schemas is used:
+// https://github.com/atombender/go-jsonschema
+//
+// To validate the schemas against a data structure is
+// used: https://github.com/qri-io/jsonschema
+//
+
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/xeipuuv/gojsonschema"
+	"github.com/qri-io/jsonschema"
 )
 
 const (
+	TopicIntrospect  = "repos-introspect"
 	SchemaHeaderKey  = "header"
 	SchemaRequestKey = "request"
 )
@@ -21,57 +40,92 @@ var schemaHeader string
 //go:embed "introspectRequest.message.json"
 var schemaMessageRequest string
 
-type SchemaMap map[string](*gojsonschema.Schema)
+var (
+	schemaKey2JsonSpec = map[string]map[string]string{
+		TopicIntrospect: {
+			SchemaHeaderKey:  schemaHeader,
+			SchemaRequestKey: schemaMessageRequest,
+		},
+	}
+)
 
-func newSchema(data []byte) (*gojsonschema.Schema, error) {
+type Schema jsonschema.Schema
+
+type SchemaMap map[string](*Schema)
+
+type TopicSchemas map[string]SchemaMap
+
+// LoadSchemas unmarshall all the embeded schemas and
+//   return all them in the ouput schemas variable.
+// schemas is a hashmap map[string]*gojsonschema.Schema that
+//   can be used to immediately validate schemas against
+//   unmarshalled schemas.
+// Return error the error while loading the schemas, or nil
+//   if the function end successfully.
+func LoadSchemas() (TopicSchemas, error) {
 	var (
-		schema *gojsonschema.Schema
-		body   interface{}
+		output TopicSchemas = TopicSchemas{}
+		schema *Schema
 		err    error
 	)
-	if err = json.Unmarshal(data, &body); err != nil {
-		return nil, fmt.Errorf("[newSchema] error unmarshalling: %w", err)
+
+	for topic, schemas := range schemaKey2JsonSpec {
+		output[topic] = make(map[string]*Schema, 2)
+		for key, schemaSerialized := range schemas {
+			if schema, err = LoadSchemaFromString(schemaSerialized); err != nil {
+				return nil, fmt.Errorf("[LoadSchemas] error unmarshalling for topic '%s' schema '%s': %w", topic, key, err)
+			}
+			output[topic][key] = schema
+		}
 	}
-	loader := gojsonschema.NewGoLoader(body)
-	if schema, err = gojsonschema.NewSchema(loader); err != nil {
-		return nil, fmt.Errorf("[newSchema] error creating schema: %w", err)
-	}
-	return schema, nil
+
+	return output, nil
 }
 
-// UnmarshallSchemas
-func UnmarshallSchemas(schemas *SchemaMap) error {
-	var (
-		output SchemaMap = SchemaMap{}
-		schema *gojsonschema.Schema
-		err    error
-	)
-
-	if schemas == nil {
-		return fmt.Errorf("[UnmarshallSchemas] schemas cannot be nil")
+func LoadSchemaFromString(schema string) (*Schema, error) {
+	var err error
+	output := new(Schema)
+	rs := &jsonschema.Schema{}
+	if err = json.Unmarshal([]byte(schema), rs); err != nil {
+		return nil, fmt.Errorf("[LoadSchemaFromString] error unmarshalling schema '%s': %w", schema, err)
 	}
-
-	if schema, err = newSchema([]byte(schemaHeader)); err != nil {
-		return fmt.Errorf("[UnmarshallSchemas] error creating schema for %s: %w", SchemaHeaderKey, err)
-	}
-	output[SchemaHeaderKey] = schema
-
-	if schema, err = newSchema([]byte(schemaMessageRequest)); err != nil {
-		return fmt.Errorf("[UnmarshallSchemas] error creating schema for %s: %w", schemaMessageRequest, err)
-	}
-	output[SchemaRequestKey] = schema
-
-	*schemas = output
-	return nil
+	output = (*Schema)(rs)
+	return output, nil
 }
 
-func ValidateWithSchemaAndInterface(schema *gojsonschema.Schema, body interface{}) error {
-	if schema == nil {
-		return fmt.Errorf("[ValidateSchema] schema is nil")
+func (s *Schema) prepareParseErrorList(parseErrs []jsonschema.KeyError) error {
+	var errorList []string = []string{}
+	for _, item := range parseErrs {
+		errorList = append(errorList, fmt.Sprintf(
+			"%s: %s = %s",
+			item.Message,
+			item.PropertyPath,
+			item.InvalidValue,
+		))
 	}
-	reference := gojsonschema.NewGoLoader(body)
-	if _, err := schema.Validate(reference); err != nil {
-		return fmt.Errorf("[ValidateSchema] schema invalid: %w", err)
+	return fmt.Errorf("error validating schema: %s", strings.Join(errorList, ", "))
+}
+
+func (s *Schema) ValidateBytes(data []byte) error {
+	var jsSchema *jsonschema.Schema
+	jsSchema = (*jsonschema.Schema)(s)
+	parseErrs, err := jsSchema.ValidateBytes(context.Background(), data)
+	if err != nil {
+		return err
 	}
-	return nil
+	if len(parseErrs) == 0 {
+		return nil
+	}
+
+	return s.prepareParseErrorList(parseErrs)
+}
+
+func (s *Schema) Validate(data interface{}) error {
+	var jsSchema *jsonschema.Schema
+	jsSchema = (*jsonschema.Schema)(s)
+	vs := jsSchema.Validate(context.Background(), data)
+	if len(*vs.Errs) == 0 {
+		return nil
+	}
+	return s.prepareParseErrorList(*vs.Errs)
 }
