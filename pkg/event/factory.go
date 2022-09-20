@@ -2,32 +2,24 @@ package event
 
 import (
 	"context"
+	"my-test-app/pkg/config"
 	"my-test-app/pkg/event/schema"
+	"my-test-app/pkg/utils"
 	"sync"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
-type handler struct {
-	db *gorm.DB
-}
-
-func (h *handler) onMessage(ctx context.Context, msg *kafka.Message) {
-	log.Debug().Msg("onMessage was called")
-	return
-}
-
 func Start(
 	ctx context.Context,
-	cfg *viper.Viper,
-	errors chan<- error,
+	cfg *config.Configuration,
 	db *gorm.DB,
+	errors chan<- error,
 	// ready *utils.ProbeHandler,
 	// live *utils.ProbeHandler,
 	wg *sync.WaitGroup,
+	handler Eventable,
 ) {
 	// instrumentation.Start()
 
@@ -38,10 +30,7 @@ func Start(
 		err     error
 	)
 	schemas, err = schema.LoadSchemas()
-	DieOnError(err)
-
-	// TODO Prepare here how to inject the schema validation
-	schemas = schemas
+	utils.DieOnError(err)
 
 	// schemas := utils.LoadSchemas(cfg, schemaNames)
 	// schemaMapper[runnerMessageHeaderValue] = schemas[0]
@@ -53,17 +42,13 @@ func Start(
 	// live.Register(sql.Ping)
 
 	// kafkaTimeout := cfg.GetInt("kafka.timeout")
-	topics := cfg.GetStringSlice("kafka.topics")
+	topics := cfg.Kafka.Topics
 	consumer, err := NewConsumer(ctx, cfg, topics)
-	DieOnError(err)
+	utils.DieOnError(err)
 
 	// ready.Register(func() error {
 	// 	return kafka.Ping(kafkaTimeout, consumer)
 	// })
-
-	handler := &handler{
-		db: db,
-	}
 
 	// headerPredicate := FilterByHeaderPredicate(ctx, requestTypeHeader, runnerMessageHeaderValue, satMessageHeaderValue)
 	// validationPredicate := SchemaValidationPredicate(ctx, requestTypeHeader, schemaMapper)
@@ -71,7 +56,7 @@ func Start(
 	// TODO Add here the schema validation
 
 	// start := NewConsumerEventLoop(ctx, consumer, headerPredicate, validationPredicate, handler.onMessage, errors)
-	start := NewConsumerEventLoop(ctx, consumer, nil, nil, handler.onMessage, errors)
+	start := NewConsumerEventLoop(ctx, consumer /* nil, nil, */, schemas, handler.OnMessage)
 
 	go func() {
 		defer wg.Done()

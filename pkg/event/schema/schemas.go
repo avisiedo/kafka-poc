@@ -60,8 +60,8 @@ type TopicSchemas map[string]SchemaMap
 // schemas is a hashmap map[string]*gojsonschema.Schema that
 //   can be used to immediately validate schemas against
 //   unmarshalled schemas.
-// Return error the error while loading the schemas, or nil
-//   if the function end successfully.
+// Return the resulting list of schemas, or nil if an
+// an error happens.
 func LoadSchemas() (TopicSchemas, error) {
 	var (
 		output TopicSchemas = TopicSchemas{}

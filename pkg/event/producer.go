@@ -2,28 +2,29 @@ package event
 
 import (
 	"encoding/json"
+	"my-test-app/pkg/config"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/openlyinc/pointy"
-	"github.com/spf13/viper"
 )
 
 // https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
 
-func NewProducer(config *viper.Viper) (*kafka.Producer, error) {
+// func NewProducer(config *viper.Viper) (*kafka.Producer, error) {
+func NewProducer(config *config.Configuration) (*kafka.Producer, error) {
 
 	kafkaConfigMap := &kafka.ConfigMap{
-		"bootstrap.servers":        config.GetString("kafka.bootstrap.servers"),
-		"request.required.acks":    config.GetInt("kafka.request.required.acks"),
-		"message.send.max.retries": config.GetInt("kafka.message.send.max.retries"),
-		"retry.backoff.ms":         config.GetInt("kafka.retry.backoff.ms"),
+		"bootstrap.servers":        config.Kafka.Bootstrap.Servers,
+		"request.required.acks":    config.Kafka.Request.Required.Acks,
+		"message.send.max.retries": config.Kafka.Message.Send.Max.Retries,
+		"retry.backoff.ms":         config.Kafka.Retry.Backoff.Ms,
 	}
-	if config.Get("kafka.sasl.username") != nil {
-		_ = kafkaConfigMap.SetKey("sasl.username", config.GetString("kafka.sasl.username"))
-		_ = kafkaConfigMap.SetKey("sasl.password", config.GetString("kafka.sasl.password"))
-		_ = kafkaConfigMap.SetKey("sasl.mechanism", config.GetString("kafka.sasl.mechanism"))
-		_ = kafkaConfigMap.SetKey("security.protocol", config.GetString("kafka.sasl.protocol"))
-		_ = kafkaConfigMap.SetKey("ssl.ca.location", config.GetString("kafka.capath"))
+	if config.Kafka.Sasl.Username != "" {
+		_ = kafkaConfigMap.SetKey("sasl.username", config.Kafka.Sasl.Username)
+		_ = kafkaConfigMap.SetKey("sasl.password", config.Kafka.Sasl.Password)
+		_ = kafkaConfigMap.SetKey("sasl.mechanism", config.Kafka.Sasl.Mechnism)
+		_ = kafkaConfigMap.SetKey("security.protocol", config.Kafka.Sasl.Protocol)
+		_ = kafkaConfigMap.SetKey("ssl.ca.location", config.Kafka.Capath)
 	}
 	producer, err := kafka.NewProducer(kafkaConfigMap)
 	if err != nil {

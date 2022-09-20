@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"my-test-app/pkg/event/schema"
+	_ "my-test-app/pkg/utils"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
@@ -26,13 +27,6 @@ func Ping(timeout int, instances ...pingable) error {
 	}
 
 	return nil
-}
-
-func DieOnError(err error) {
-	if err == nil {
-		return
-	}
-	panic(err.Error())
 }
 
 func Headers(keysAndValues ...string) []kafka.Header {
