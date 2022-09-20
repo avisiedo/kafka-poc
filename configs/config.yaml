@@ -1,0 +1,35 @@
+kafka:
+  timeout: 10000
+  group:
+    id: repo-introspect
+  auto:
+    offset:
+      reset: latest
+    commit:
+      interval:
+        ms: 5000
+  bootstrap:
+    servers: localhost:9092
+  topics:
+    - repos-introspect
+database:
+  host: localhost
+  port: 5432
+  user: content
+  password: content
+  name: content
+logging:
+  level: debug
+  console: True
+seed:
+  repository_configurations:
+    org_id: "13441076"
+    size: 2
+  repository_rpms:
+    size: 10
+  repositories:
+    size: 3
+certs:
+  cert_path: "/home/avisiedo/hmscontent/content-sources-backend/configs/secrets/cdncert/cert.pem"
+options:
+  paged_rpm_inserts_limit: 200
