@@ -10,7 +10,7 @@ configs/bonfire-local.yaml
 .vscode
 
 # Kafka data directory
-tests/data/kafka
+tests/kafka/data
 
 # Generated files
 pkg/event/schema/*.json
