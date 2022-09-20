@@ -7,24 +7,30 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"my-test-app/pkg/event"
 	"my-test-app/pkg/event/message"
 	"my-test-app/pkg/event/schema"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
+	b64 "encoding/base64"
+
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
-	kafka "github.com/segmentio/kafka-go"
+	"github.com/spf13/viper"
 )
 
-var schemas schema.SchemaMap
+var schemas schema.TopicSchemas
+var consumer *kafka.Consumer = nil
+var producer *kafka.Producer = nil
 
 type Widget struct {
-	Header  message.HeaderMessageJson
-	Payload message.IntrospectRequestMessageJson
+	Key     string
+	Header  message.HeaderMessage
+	Payload message.IntrospectRequestMessage
 }
 
 func getUrl() (string, error) {
@@ -36,222 +42,183 @@ func getUrl() (string, error) {
 	}
 }
 
-func getTopic() (string, error) {
-	topic := "foo"
-	for _, topicConfig := range clowder.KafkaTopics {
-		topic = topicConfig.Name
-	}
-	if topic == "" {
-		return "", errors.New("empty name")
-	} else {
-		return topic, nil
-	}
+func getConfig() *viper.Viper {
+	config := viper.New()
 
+	config.Set("kafka.bootstrap.servers", "localhost:9092")
+	config.Set("kafka.request.required.acks", 1)
+	config.Set("kafka.message.send.max.retries", 3)
+	config.Set("kafka.group.id", "0")
+	config.Set("kafka.auto.offset.reset", "latest")
+	config.Set("kafka.auto.commit.interval.ms", 800)
+	config.Set("kafka.retry.backoff.ms", 400)
+	config.Set("kafka.topics", []string{"repos-introspect"})
+
+	// TODO This will be provided into the config in managed kafka
+	// config.Set("kafka.sasl.username", "username")
+	// config.Set("kafka.sasl.password", "username")
+	// config.Set("kafka.sasl.mechanism", "username")
+	// config.Set("kafka.sasl.protocol", "username")
+	// config.Set("kafka.sasl.capath", "username")
+
+	return config
 }
 
-func getKafkaReader() (*kafka.Reader, error) {
+func getTopics(config *viper.Viper) ([]string, error) {
+	return config.GetStringSlice("kafka.topics"), nil
+}
+
+func getKafkaReader(config *viper.Viper) (*kafka.Consumer, error) {
 	var (
 		err      error
-		kafkaUrl string
-		topic    string
+		topics   []string
+		consumer *kafka.Consumer
 	)
-	if clowder.IsClowderEnabled() {
-		if kafkaUrl, err = getUrl(); err != nil {
-			return nil, err
-		}
-		log.Printf("kafkaUrl = '%s'", kafkaUrl)
-		if topic, err = getTopic(); err != nil {
-			return nil, err
-		}
-		log.Printf("topic = '%s'", topic)
-	} else {
-		kafkaUrl = "localhost:9092"
-		topic = "repos.created"
+
+	if topics, err = getTopics(config); err != nil {
+		return nil, fmt.Errorf("[getKafkaReader] error retrieving the topic: %w", err)
+	}
+	if consumer, err = event.NewConsumer(context.Background(), config, topics); err != nil {
+		return nil, fmt.Errorf("[getKafkaReader] error creating consumer: %w", err)
 	}
 
-	config := kafka.ReaderConfig{
-		Topic:    topic,
-		Brokers:  []string{kafkaUrl},
-		MaxWait:  500 * time.Millisecond,
-		MinBytes: 1,
-		MaxBytes: 100,
-	}
-
-	return kafka.NewReader(config), nil
+	return consumer, nil
 }
 
-func getKafkaWriter() (*kafka.Writer, error) {
-	if !clowder.IsClowderEnabled() {
-		log.Println("clowder disabled")
-		kafkaUrl := "localhost:9092"
-		topic := "repos.created"
-		log.Printf("kafkaUrl = '%s'", kafkaUrl)
-		log.Printf("topic = '%s'", topic)
-		return &kafka.Writer{
-			Addr:     kafka.TCP(kafkaUrl),
-			Topic:    topic,
-			Balancer: &kafka.LeastBytes{},
-		}, nil
-	}
-	kafkaUrl, urlError := getUrl()
-	if urlError != nil {
-		return nil, urlError
-	}
-	log.Printf("kafkaUrl = '%s'", kafkaUrl)
-	topic, topicError := getTopic()
-	if topicError != nil {
-		return nil, topicError
-	}
-	log.Printf("topic = '%s'", topic)
-	return &kafka.Writer{
-		Addr:     kafka.TCP(kafkaUrl),
-		Topic:    topic,
-		Balancer: &kafka.LeastBytes{},
-	}, nil
-}
-
-func sendMessage(context context.Context, writer *kafka.Writer, widget *Widget) error {
+func getKafkaWriter(config *viper.Viper) (*kafka.Producer, error) {
 	var (
-		err     error
-		header  []byte
-		payload []byte
+		producer *kafka.Producer
+		err      error
 	)
-	// if clowder.IsClowderEnabled() {
-	// msg := kafka.Message{
-	// 	Key:   []byte(fmt.Sprintf("id-%d", id)),
-	// 	Value: []byte(name),
-	// }
+
+	if producer, err = event.NewProducer(config); err != nil {
+		return nil, err
+	}
+	return producer, nil
+}
+
+func initKafka() {
+	var (
+		config *viper.Viper
+		err    error
+	)
+	config = getConfig()
+	if consumer, err = getKafkaReader(config); err != nil {
+		panic(err)
+	}
+	if producer, err = getKafkaWriter(config); err != nil {
+		panic(err)
+	}
+}
+
+func sendMessage(context context.Context, writer *kafka.Producer, widget *Widget) error {
+	var (
+		err              error
+		header           kafka.Header
+		headerSerialized []byte
+		payload          []byte
+		topic            string
+	)
+
 	if widget == nil {
-		return fmt.Errorf("widget is nil")
+		return fmt.Errorf("[sendMessage] widget is nil")
 	}
 
 	// Validate Header
-	if err = schema.ValidateWithSchemaAndInterface(
-		schemas[schema.SchemaHeaderKey],
-		widget.Header,
-	); err != nil {
-		return fmt.Errorf("[sendMessage] Header failed validation: %w", err)
+	// if topic, err = getTopic(); err != nil {
+	// 	return fmt.Errorf("[sendMessage] Erro retrieving the topic: %w", err)
+	// }
+	topic = schema.TopicIntrospect
+	if err = schemas[topic][schema.SchemaHeaderKey].Validate(widget.Header); err != nil {
+		return fmt.Errorf("[sendMessage] Header failed schema validation: %w", err)
 	}
 	// Validate Payload
-	if err = schema.ValidateWithSchemaAndInterface(
-		schemas[schema.SchemaRequestKey],
-		widget.Payload,
-	); err != nil {
-		return fmt.Errorf("[sendMessage] Payload failed validation: %w", err)
+	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
+		return fmt.Errorf("[sendMessage] Payload failed schema validation: %w", err)
 	}
 
 	// Compose message
-	if header, err = json.Marshal(widget.Header); err != nil {
+	if headerSerialized, err = json.Marshal(widget.Header); err != nil {
 		return err
 	}
 	if payload, err = json.Marshal(widget.Payload); err != nil {
 		return err
 	}
-	msg := kafka.Message{
-		Key:   header,
-		Value: payload,
-	}
 
-	// Write message to the broker
-	if err = writer.WriteMessages(context, msg); err != nil {
+	// TODO Future change, potential wrong usage of headers
+	header.Key = "header"
+	header.Value = []byte(headerSerialized)
+	if err = event.Produce(producer, topic, payload, widget.Key, header); err != nil {
 		return err
 	}
-
 	return nil
-
-	// } else {
-	// 	log.Println("clowder disabled")
-	// }
 }
 
-// type KafkaConsumer struct {
-// 	Context context.Context
-// 	Reader  kafka.Reader
-// }
-
-// func (k *KafkaConsumer)ReadMessage()
-
-func readMessage(c context.Context, reader *kafka.Reader) (*Widget, error) {
+func readMessage(c context.Context, reader *kafka.Consumer) (*Widget, error) {
+	type b64string struct {
+		Value string `json:"string"`
+	}
 	var (
 		err    error
-		msg    kafka.Message
+		msg    *kafka.Message
 		widget *Widget
+		topic  string
 	)
 	if c == nil {
 		return nil, fmt.Errorf("[readMessage] context is nil")
 	}
-	if msg, err = reader.ReadMessage(c); err != nil {
-		return nil, err
-	}
-	widget = &Widget{}
-	if err = json.Unmarshal(msg.Key, &widget.Header); err != nil {
-		return nil, err
-	}
-	if err = json.Unmarshal(msg.Value, &widget.Payload); err != nil {
-		return nil, err
+	if msg, err = consumer.ReadMessage(1 * time.Second); err != nil {
+		return nil, fmt.Errorf("[readMessage] error awaiting to read a message: %w", err)
 	}
 
-	// Validate Header
-	if err = schema.ValidateWithSchemaAndInterface(
-		schemas[schema.SchemaHeaderKey],
-		widget.Header,
-	); err != nil {
+	// Handle header
+	widget = &Widget{
+		Key: string(msg.Key),
+	}
+	for _, header := range msg.Headers {
+		if header.Key == "header" {
+			if err = json.Unmarshal(header.Value, &widget.Header); err != nil {
+				return nil, fmt.Errorf("[readMessage] error unmarshalling Header: %w", err)
+			}
+		}
+	}
+	topic = *msg.TopicPartition.Topic
+	if err = schemas[topic][schema.SchemaHeaderKey].Validate(widget.Header); err != nil {
 		return nil, fmt.Errorf("[readMessage] Header failed validation: %w", err)
 	}
-	// Validate Payload
-	if err = schema.ValidateWithSchemaAndInterface(
-		schemas[schema.SchemaRequestKey],
-		widget.Payload,
-	); err != nil {
+
+	// Handle payload
+
+	var b64str string
+	var b64decoded []byte
+	if err = json.Unmarshal(msg.Value, &b64str); err != nil {
+		return nil, fmt.Errorf("[readMessage] Payload unmarshall error: %w", err)
+	}
+	if b64decoded, err = b64.StdEncoding.DecodeString(b64str); err != nil {
+		return nil, fmt.Errorf("[readMessage] Decoding base64 message value: %w", err)
+	}
+	if err = json.Unmarshal([]byte(b64decoded), &widget.Payload); err != nil {
+		return nil, fmt.Errorf("[readMessage] Payload unmarshall error: %w", err)
+	}
+	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
 		return nil, fmt.Errorf("[readMessage] Payload failed validation: %w", err)
 	}
+
+	// TODO Actions for the message comes here
 
 	return widget, nil
 }
 
 func listener() {
-	var (
-		kafkaUrl string
-		topic    string
-		err      error
-	)
-	if !clowder.IsClowderEnabled() {
-		log.Println("clowder disabled")
-		kafkaUrl = "localhost:9092"
-		topic = "repos.created"
-	} else {
-		if kafkaUrl, err = getUrl(); err != nil {
-			return
-		}
-		if topic, err = getTopic(); err != nil {
-			return
-		}
-	}
-	partition := 0
-	conn, err := kafka.DialLeader(context.Background(), "tcp", kafkaUrl, topic, partition)
-	if err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
-
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	batch := conn.ReadBatch(10e3, 1e6)
-	b := make([]byte, 10e3) // 10KB max per message
-	for {
-		n, err := batch.Read(b)
-		if err != nil {
-			break
-		}
-		fmt.Println(string(b[:n]))
-	}
+	initKafka()
 }
 
 func apiServer(pingOnly bool) {
 	var (
-		err         error
-		kafkaWriter *kafka.Writer
-		kafkaReader *kafka.Reader
+		err error
 	)
-	myWidgets := make(map[int64]Widget)
+
+	initKafka()
 
 	r := gin.Default()
 	r.GET("/ping", func(c *gin.Context) {
@@ -260,43 +227,21 @@ func apiServer(pingOnly bool) {
 		})
 	})
 	if !pingOnly {
-		if kafkaWriter, err = getKafkaWriter(); err != nil {
-			log.Println("Could not initialize kafka writer")
-			panic(err)
-		}
-		if kafkaWriter.BatchTimeout, err = time.ParseDuration("100ms"); err != nil {
-			panic(err)
-		}
 
-		if kafkaReader, err = getKafkaReader(); err != nil {
-			panic(err)
-		}
-
-		r.GET("/kafka/", func(c *gin.Context) {
+		r.GET("/kafka", func(c *gin.Context) {
 			var (
 				// msg    kafka.Message
-				err    error
+				// err    error
 				widget *Widget
 			)
-			if widget, err = readMessage(c, kafkaReader); err != nil {
-				c.AbortWithError(http.StatusNoContent, err)
+			if widget, err = readMessage(c, consumer); err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
 				return
 			}
-			// if msg, err = kafkaReader.ReadMessage(c); err != nil {
-			// 	c.AbortWithError(http.StatusNoContent, err)
-			// 	return
-			// }
-			// if err = json.Unmarshal(msg.Key, &widget.Key); err != nil {
-			// 	c.AbortWithError(http.StatusInternalServerError, err)
-			// 	return
-			// }
-			// if err = json.Unmarshal(msg.Value, &widget.Payload); err != nil {
-			// 	c.AbortWithError(http.StatusInternalServerError, err)
-			// 	return
-			// }
+
 			c.JSON(http.StatusOK, widget)
 		})
-		r.POST("/kafka/", func(c *gin.Context) {
+		r.POST("/kafka", func(c *gin.Context) {
 			var (
 				widget            Widget
 				headerSerialized  []byte
@@ -307,49 +252,41 @@ func apiServer(pingOnly bool) {
 				return
 			}
 
-			if widget.Header.Uuid == "" {
-				widget.Header.Uuid = uuid.NewString()
+			if widget.Key == "" {
+				widget.Key = uuid.NewString()
 			}
 			widget.Header.Event = "Request"
-			widget.Payload.XRhInsightsRequestId = fmt.Sprintf("%s", widget.Header.Uuid)
-			sendMessage(c, kafkaWriter, &widget)
+			widget.Payload.RequestId = fmt.Sprintf("%s", widget.Header.Uuid)
+			if err := sendMessage(c, producer, &widget); err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
 
 			headerSerialized, err = json.Marshal(widget.Header)
-			payloadSerialized, err = json.Marshal(widget.Header)
-			log.Printf("header: %s", string(headerSerialized))
+			payloadSerialized, err = json.Marshal(widget.Payload)
+			log.Printf("Header: %s", string(headerSerialized))
 			log.Printf("Payload: %s", string(payloadSerialized))
 
 			c.Header("Location", fmt.Sprintf("/kafka/%s", widget.Header.Uuid))
 
 			c.JSON(http.StatusAccepted, widget)
 		})
-		r.GET("/kafka/:id", func(c *gin.Context) {
-			id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-			widget, found := myWidgets[id]
-			if found {
-				c.JSON(http.StatusOK, widget)
-			} else {
-				c.String(404, "Not Found")
-			}
-		})
 	}
 	r.Run(":8000") // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 }
 
 func main() {
+	var err error
+	if schemas, err = schema.LoadSchemas(); err != nil {
+		err = fmt.Errorf("[main] error at UnmarshallSchemas: %w", err)
+		panic(err)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "listener" {
-		if err := schema.UnmarshallSchemas(&schemas); err != nil {
-			panic("[main] error at UnmarshallSchemas")
-		}
 		go func() {
 			apiServer(true)
 		}()
 		listener()
 	} else {
-		if err := schema.UnmarshallSchemas(&schemas); err != nil {
-			err = fmt.Errorf("[main] error at UnmarshallSchemas: %w", err)
-			panic(err)
-		}
 		apiServer(false)
 	}
 }

@@ -6,23 +6,18 @@ GET http://localhost:8000/ping
 
 ### Write message
 
-POST http://localhost:8000/kafka/
+POST http://localhost:8000/kafka
 
 {
-    "x-rh-identity": "eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciwiYWNjb3VudF9udW1iZXIiOiI5NDc5MjMifX0=",
-    "x-rh-insights-request-id": "value",
-    "state": "Request",
-    "url": "https://www.google.com",
-    "count": 29,
-    "status": "Valid"
+    "org_id": "92934",
+    "request_id": "9823ndai732",
+    "b64_identity": "eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciwiYWNjb3VudF9udW1iZXIiOiI5NDc5MjMifX0=",
+    "state": "Pending",
+    "url": "myprotocol:#//www.google.com",
+    "status": "Valid",
+    "anyfield": "anyvalue"
 }
-
-### Read message
-
-GET http://localhost:8000/kafka/7887
-
 
 ### Read all the messages
 
-GET http://localhost:8000/kafka/
-
+GET http://localhost:8000/kafka
