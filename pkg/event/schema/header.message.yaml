@@ -1,19 +1,16 @@
-##
-# Message schema for introspectRepository
-#
-# http://json-schema.org
-# http://json-schema.org/latest/json-schema-core.html
-# http://json-schema.org/latest/json-schema-validation.html
-##
-$schema: "https://json-schema.org/draft/2020-12/schema"
+# Schema validation for the headers
+$schema: "http://json-schema.org/draft-07/schema#"
 $id: "https://github.com/content-services/content-sources-backend/schema/header.message.yaml"
+# $ref: "#/definitions/Header"
 title: Header message that will be present on every kafka message
 description: Schema for the kafka message header
 type: object
+additionalProperties: false
 properties:
   uuid:
     description: Identify uniquely this message and persist during his transformation if any
     type: string
+    format: uuid
     # https://regex101.com/r/XdgimB/1
     pattern: /^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/ig
   event:
