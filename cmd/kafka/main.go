@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"my-test-app/pkg/config"
 	"my-test-app/pkg/event"
 	"my-test-app/pkg/event/message"
 	"my-test-app/pkg/event/schema"
@@ -64,11 +65,11 @@ func getConfig() *viper.Viper {
 	return config
 }
 
-func getTopics(config *viper.Viper) ([]string, error) {
-	return config.GetStringSlice("kafka.topics"), nil
+func getTopics(config *config.Configuration) ([]string, error) {
+	return config.Kafka.Topics, nil
 }
 
-func getKafkaReader(config *viper.Viper) (*kafka.Consumer, error) {
+func getKafkaReader(config *config.Configuration) (*kafka.Consumer, error) {
 	var (
 		err      error
 		topics   []string
@@ -85,7 +86,7 @@ func getKafkaReader(config *viper.Viper) (*kafka.Consumer, error) {
 	return consumer, nil
 }
 
-func getKafkaWriter(config *viper.Viper) (*kafka.Producer, error) {
+func getKafkaWriter(config *config.Configuration) (*kafka.Producer, error) {
 	var (
 		producer *kafka.Producer
 		err      error
@@ -99,14 +100,14 @@ func getKafkaWriter(config *viper.Viper) (*kafka.Producer, error) {
 
 func initKafka() {
 	var (
-		config *viper.Viper
-		err    error
+		cfg *config.Configuration
+		err error
 	)
-	config = getConfig()
-	if consumer, err = getKafkaReader(config); err != nil {
+	cfg = config.Get()
+	if consumer, err = getKafkaReader(cfg); err != nil {
 		panic(err)
 	}
-	if producer, err = getKafkaWriter(config); err != nil {
+	if producer, err = getKafkaWriter(cfg); err != nil {
 		panic(err)
 	}
 }
