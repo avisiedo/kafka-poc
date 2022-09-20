@@ -28,16 +28,16 @@ DOCKER_REGISTRY ?= quay.io
 # DOCKER_RUN_ARGS
 
 .PHONY: docker-login
-docker-login:
-	$(DOCKER) --log-level $(DOCKER_LOG_LEVEL) login -u "$(DOCKER_LOGIN_USER)" -p "$(DOCKER_LOGIN_TOKEN)" $(DOCKER_REGISTRY)
+docker-login:  ## Login in the container registry DOCKER_REGISTRY using DOCKER_LOGIN_USER and DOCKER_LOGIN_TOKEN
+	@$(DOCKER) --log-level $(DOCKER_LOG_LEVEL) login -u "$(DOCKER_LOGIN_USER)" -p "$(DOCKER_LOGIN_TOKEN)" $(DOCKER_REGISTRY)
 
 .PHONY: docker-build
 docker-build:  ## Build image DOCKER_IMAGE from DOCKER_DOCKERFILE using the DOCKER_CONTEXT_DIR
-	$(DOCKER) --log-level $(DOCKER_LOG_LEVEL)build $(DOCKER_BUILD_OPTS) -t "$(DOCKER_IMAGE)" -f $(DOCKER_DOCKERFILE) "$(DOCKER_CONTEXT_DIR)"
+	$(DOCKER) --log-level $(DOCKER_LOG_LEVEL) build $(DOCKER_BUILD_OPTS) -t "$(DOCKER_IMAGE)" -f $(DOCKER_DOCKERFILE) "$(DOCKER_CONTEXT_DIR)"
 
 .PHONY: docker-push
 docker-push:  ## Push image to remote registry
-	$(DOCKER) --log-level $(DOCKER_LOG_LEVEL)push "$(DOCKER_IMAGE)"
+	$(DOCKER) --log-level $(DOCKER_LOG_LEVEL) push "$(DOCKER_IMAGE)"
 
 # TODO Indicate in the options the IP assigned to the postgres container
 # .PHONY: docker-run

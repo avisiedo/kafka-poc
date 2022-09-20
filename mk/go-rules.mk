@@ -4,6 +4,9 @@
 # the generated binaries.
 ##
 
+CONFIG_PATH ?= $(PROJECT_DIR)/configs/config.yaml
+export CONFIG_PATH
+
 # Directory where the built binaries will be generated
 GO_OUTPUT ?= $(PROJECT_DIR)/bin
 ifeq (,$(shell ls -1d vendor 2>/dev/null))

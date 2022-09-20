@@ -5,11 +5,13 @@
 # This is based on the repository below:
 # https://github.com/RedHatInsights/playbook-dispatcher
 #
-# https://pkg.go.dev/github.com/xeipuuv/gojsonschema
+# https://github.com/atombender/go-jsonschema
 ##
 
 GOJSONSCHEMA := $(GO_OUTPUT)/gojsonschema
-GOJSONSCHEMA_VERSION := latest
+# see: https://github.com/atombender/go-jsonschema/issues/32
+# v0.9.0 breaks on 'additionalProperties'
+GOJSONSCHEMA_VERSION := v0.8.0
 
 EVENT_SCHEMA_DIR := $(PROJECT_DIR)/pkg/event/schema
 EVENT_MESSAGE_DIR := $(PROJECT_DIR)/pkg/event/message
@@ -21,13 +23,8 @@ SCHEMA_JSON_FILES := $(patsubst $(EVENT_SCHEMA_DIR)/%.yaml,$(EVENT_SCHEMA_DIR)/%
 gen-event-messages: $(GOJSONSCHEMA) $(SCHEMA_JSON_FILES)  ## Generate event messages from schemas
 	@[ -e "$(EVENT_MESSAGE_DIR)" ] || mkdir -p "$(EVENT_MESSAGE_DIR)"
 
-	@#rm -vf "$(EVENT_MESSAGE_DIR)/header.message.json"
 	$(GOJSONSCHEMA) -p message "$(EVENT_SCHEMA_DIR)/header.message.json" -o "$(EVENT_MESSAGE_DIR)/header.types.gen.go"
-	@# yaml2json "$(EVENT_SCHEMA_DIR)/header.message.yaml" "$(EVENT_SCHEMA_DIR)/header.message.json"
-
-	@#rm -vf "$(EVENT_MESSAGE_DIR)/introspectRequest.message.json"
 	$(GOJSONSCHEMA) -p message "$(EVENT_SCHEMA_DIR)/introspectRequest.message.json" -o "$(EVENT_MESSAGE_DIR)/introspect_request.types.gen.go"
-	@# yaml2json "$(EVENT_SCHEMA_DIR)/introspectRequest.message.yaml" "$(EVENT_SCHEMA_DIR)/introspectRequest.message.json"
 
 
 # .PHONY: gen-event-messages-json
@@ -54,5 +51,3 @@ $(GOJSONSCHEMA):
 		find "$${GOPATH}" -type d -exec chmod u+w {} \; ; \
 		rm -rf "$${GOPATH}" ; \
 	}
-
-
