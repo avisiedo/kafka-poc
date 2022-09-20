@@ -7,11 +7,19 @@ kafka:
       reset: latest
     commit:
       interval:
-        ms: 5000
+        ms: 200
   bootstrap:
     servers: localhost:9092
   topics:
     - repos-introspect
+  retry:
+    backoff:
+      ms: 500
+  # sasl:
+  #   username: someusername
+  #   passowrd: somepassword
+  #   mechanism: somemechanism
+  #   protocol: someprotocol
 database:
   host: localhost
   port: 5432
