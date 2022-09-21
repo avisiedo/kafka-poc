@@ -59,7 +59,7 @@ kafka-down:  ## Stop local kafka infra
 	$(DOCKER) container prune -f
 
 .PHONY: kafka-clean
-kafka-clean: kafka-down
+kafka-clean: kafka-down  ## Clean current local kafka infra
 	export TMP="$(KAFKA_DATA_DIR)"; [ "$${TMP#$(PROJECT_DIR)/}" != "$${TMP}" ] \
 	    || { echo "error:KAFKA_DATA_DIR should belong to $(PROJECT_DIR)"; exit 1; }
 	rm -rf "$(KAFKA_DATA_DIR)"
