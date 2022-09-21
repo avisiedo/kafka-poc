@@ -2,18 +2,23 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"my-test-app/pkg/config"
+	"my-test-app/pkg/db"
 	"my-test-app/pkg/event"
+	"my-test-app/pkg/event/handler"
 	"my-test-app/pkg/event/message"
 	"my-test-app/pkg/event/schema"
+	"my-test-app/pkg/utils"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	b64 "encoding/base64"
 
@@ -21,7 +26,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
-	"github.com/spf13/viper"
 )
 
 var schemas schema.TopicSchemas
@@ -43,27 +47,27 @@ func getUrl() (string, error) {
 	}
 }
 
-func getConfig() *viper.Viper {
-	config := viper.New()
+// func getConfig() *viper.Viper {
+// 	config := viper.New()
 
-	config.Set("kafka.bootstrap.servers", "localhost:9092")
-	config.Set("kafka.request.required.acks", 1)
-	config.Set("kafka.message.send.max.retries", 3)
-	config.Set("kafka.group.id", "0")
-	config.Set("kafka.auto.offset.reset", "latest")
-	config.Set("kafka.auto.commit.interval.ms", 800)
-	config.Set("kafka.retry.backoff.ms", 400)
-	config.Set("kafka.topics", []string{"repos-introspect"})
+// 	config.Set("kafka.bootstrap.servers", "localhost:9092")
+// 	config.Set("kafka.request.required.acks", 1)
+// 	config.Set("kafka.message.send.max.retries", 3)
+// 	config.Set("kafka.group.id", "0")
+// 	config.Set("kafka.auto.offset.reset", "latest")
+// 	config.Set("kafka.auto.commit.interval.ms", 800)
+// 	config.Set("kafka.retry.backoff.ms", 400)
+// 	config.Set("kafka.topics", []string{"repos-introspect"})
 
-	// TODO This will be provided into the config in managed kafka
-	// config.Set("kafka.sasl.username", "username")
-	// config.Set("kafka.sasl.password", "username")
-	// config.Set("kafka.sasl.mechanism", "username")
-	// config.Set("kafka.sasl.protocol", "username")
-	// config.Set("kafka.sasl.capath", "username")
+// 	// TODO Assuming this will be provided into the config from managed kafka
+// 	// config.Set("kafka.sasl.username", "username")
+// 	// config.Set("kafka.sasl.password", "username")
+// 	// config.Set("kafka.sasl.mechanism", "username")
+// 	// config.Set("kafka.sasl.protocol", "username")
+// 	// config.Set("kafka.sasl.capath", "username")
 
-	return config
-}
+// 	return config
+// }
 
 func getTopics(config *config.Configuration) ([]string, error) {
 	return config.Kafka.Topics, nil
@@ -104,52 +108,57 @@ func initKafka() {
 		err error
 	)
 	cfg = config.Get()
-	if consumer, err = getKafkaReader(cfg); err != nil {
-		panic(err)
-	}
-	if producer, err = getKafkaWriter(cfg); err != nil {
-		panic(err)
-	}
+
+	producer, err = getKafkaWriter(cfg)
+	utils.DieOnError(err)
+	consumer, err = event.NewConsumer(
+		context.Background(),
+		cfg,
+		cfg.Kafka.Topics,
+	)
+	utils.DieOnError(err)
+
+	ctx := context.Background()
+
+	err = db.Connect()
+	utils.DieOnError(err)
+	dbConnector := db.DB
+	handler := handler.NewIntrospectHandler(dbConnector)
+	go func() {
+		event.Start(ctx, cfg, dbConnector, handler)
+		log.Logger.Info().Msgf("[initKafka] kafka consumer loop exited")
+	}()
 }
 
 func sendMessage(context context.Context, writer *kafka.Producer, widget *Widget) error {
 	var (
-		err              error
-		header           kafka.Header
-		headerSerialized []byte
-		payload          []byte
-		topic            string
+		err    error
+		header kafka.Header
+		topic  string
 	)
 
 	if widget == nil {
 		return fmt.Errorf("[sendMessage] widget is nil")
 	}
 
-	// Validate Header
-	// if topic, err = getTopic(); err != nil {
-	// 	return fmt.Errorf("[sendMessage] Erro retrieving the topic: %w", err)
-	// }
-	topic = schema.TopicIntrospect
-	if err = schemas[topic][schema.SchemaHeaderKey].Validate(widget.Header); err != nil {
-		return fmt.Errorf("[sendMessage] Header failed schema validation: %w", err)
-	}
 	// Validate Payload
+	topic = schema.TopicIntrospect
 	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
 		return fmt.Errorf("[sendMessage] Payload failed schema validation: %w", err)
 	}
 
 	// Compose message
-	if headerSerialized, err = json.Marshal(widget.Header); err != nil {
-		return err
-	}
-	if payload, err = json.Marshal(widget.Payload); err != nil {
-		return err
-	}
+	var key string = widget.Key
+	header.Key = "event"
+	header.Value = []byte(widget.Header.Event)
+	var msg message.IntrospectRequestMessage
+	msg.B64Identity = widget.Payload.B64Identity
+	msg.OrgId = widget.Payload.OrgId
+	msg.RequestId = widget.Payload.RequestId
+	msg.State = widget.Payload.State
+	msg.Url = widget.Payload.Url
 
-	// TODO Future change, potential wrong usage of headers
-	header.Key = "header"
-	header.Value = []byte(headerSerialized)
-	if err = event.Produce(producer, topic, payload, widget.Key, header); err != nil {
+	if err = event.Produce(producer, topic, msg, key, header); err != nil {
 		return err
 	}
 	return nil
@@ -210,8 +219,18 @@ func readMessage(c context.Context, reader *kafka.Consumer) (*Widget, error) {
 	return widget, nil
 }
 
-func listener() {
-	initKafka()
+func generateRequestId() string {
+	var (
+		randBytes []byte = make([]byte, 32)
+		requestId string
+		err       error
+	)
+	_, err = rand.Reader.Read(randBytes)
+	if err != nil {
+		return requestId
+	}
+	requestId = b64.StdEncoding.EncodeToString(randBytes)
+	return requestId
 }
 
 func apiServer(pingOnly bool) {
@@ -257,7 +276,7 @@ func apiServer(pingOnly bool) {
 				widget.Key = uuid.NewString()
 			}
 			widget.Header.Event = "Request"
-			widget.Payload.RequestId = fmt.Sprintf("%s", widget.Header.Uuid)
+			widget.Payload.RequestId = generateRequestId()
 			if err := sendMessage(c, producer, &widget); err != nil {
 				c.JSON(http.StatusInternalServerError, err.Error())
 				return
@@ -268,7 +287,7 @@ func apiServer(pingOnly bool) {
 			log.Printf("Header: %s", string(headerSerialized))
 			log.Printf("Payload: %s", string(payloadSerialized))
 
-			c.Header("Location", fmt.Sprintf("/kafka/%s", widget.Header.Uuid))
+			c.Header("Location", fmt.Sprintf("/kafka/%s", widget.Key))
 
 			c.JSON(http.StatusAccepted, widget)
 		})
@@ -283,10 +302,7 @@ func main() {
 		panic(err)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "listener" {
-		go func() {
-			apiServer(true)
-		}()
-		listener()
+		apiServer(true)
 	} else {
 		apiServer(false)
 	}

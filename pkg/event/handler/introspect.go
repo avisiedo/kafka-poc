@@ -12,9 +12,9 @@ type IntrospectHandler struct {
 	Tx *gorm.DB
 }
 
-func (h *IntrospectHandler) OnMessage(ctx context.Context, msg *kafka.Message) {
+func (h *IntrospectHandler) OnMessage(ctx context.Context, msg *kafka.Message) error {
 	log.Debug().Msg("OnMessage was called")
-	return
+	return nil
 }
 
 func NewIntrospectHandler(db *gorm.DB) *IntrospectHandler {

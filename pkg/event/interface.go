@@ -7,5 +7,5 @@ import (
 )
 
 type Eventable interface {
-	OnMessage(ctx context.Context, msg *kafka.Message)
+	OnMessage(ctx context.Context, msg *kafka.Message) error
 }

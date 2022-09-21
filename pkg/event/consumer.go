@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"my-test-app/pkg/config"
 	"my-test-app/pkg/event/schema"
+	"strings"
 	"time"
 
 	b64 "encoding/base64"
@@ -15,6 +16,7 @@ import (
 )
 
 // https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
+// https://docs.confluent.io/platform/current/clients/consumer.html#ak-consumer-configuration
 
 func NewConsumer(ctx context.Context, config *config.Configuration, topics []string) (*kafka.Consumer, error) {
 	// FIXME Clean-up the commented code
@@ -31,7 +33,7 @@ func NewConsumer(ctx context.Context, config *config.Configuration, topics []str
 		"group.id":                 config.Kafka.Group.Id,
 		"auto.offset.reset":        config.Kafka.Auto.Offset.Reset,
 		"auto.commit.interval.ms":  config.Kafka.Auto.Commit.Interval.Ms,
-		"go.logs.channel.enable":   true,
+		"go.logs.channel.enable":   false,
 		"allow.auto.create.topics": true,
 	}
 
@@ -152,7 +154,7 @@ func validateMessage(schemas schema.TopicSchemas, msg *kafka.Message) error {
 		return fmt.Errorf("topic '%s' not found in schema mapping", event.String())
 	}
 	if s = getSchema(sm, event.String()); s == nil {
-		return fmt.Errorf("schema '%s' '%s' not found in schema mapping", event.String())
+		return fmt.Errorf("schema '%s'  not found in schema mapping", event.String())
 	}
 
 	if err = json.Unmarshal(msg.Value, &b64coded); err != nil {
@@ -165,13 +167,40 @@ func validateMessage(schemas schema.TopicSchemas, msg *kafka.Message) error {
 	return s.ValidateBytes(b64decoded)
 }
 
+func stringTopics(consumer *kafka.Consumer) string {
+	if consumer == nil {
+		return ""
+	}
+
+	topics, err := consumer.Subscription()
+	if err != nil {
+		return ""
+	}
+
+	return strings.Join(topics, ", ")
+}
+
+func stringGroupId(consumer *kafka.Consumer) string {
+	if consumer == nil {
+		return ""
+	}
+	// TODO How to retrieve this information here?
+	return ""
+}
+
 func NewConsumerEventLoop(
 	ctx context.Context,
 	consumer *kafka.Consumer,
 	schemas schema.TopicSchemas,
-	handler func(context.Context, *kafka.Message),
+	handler func(context.Context, *kafka.Message) error,
 ) (start func()) {
 	return func() {
+		defer consumer.Close()
+
+		log.Info().
+			Str("group-id", stringGroupId(consumer)).
+			Str("topics", stringTopics(consumer)).
+			Msgf("Kafka consumer awaiting for messages")
 		for {
 			msg, err := consumer.ReadMessage(1 * time.Second) // TODO: configurable
 
@@ -188,11 +217,7 @@ func NewConsumerEventLoop(
 				continue
 			}
 
-			if err = validateMessage(schemas, msg); err != nil {
-				log.Logger.Error().Msgf("[NewConsumerEventLoop] Invalid message received: %s", string(msg.Value))
-				continue
-			}
-
+			log.Logger.Debug().Msgf("[NewConsumerEventLoop] A message is received")
 			// if messagePredicate != nil && !messagePredicate(msg) {
 			// 	continue
 			// }
@@ -201,9 +226,13 @@ func NewConsumerEventLoop(
 			// 	continue
 			// }
 
-			// TODO Add here message schema validation
+			if err = validateMessage(schemas, msg); err != nil {
+				log.Logger.Error().Msgf("[NewConsumerEventLoop] Invalid message received: %s", string(msg.Value))
+				continue
+			}
 
 			handler(ctx, msg)
+			consumer.CommitMessage(msg)
 		}
 	}
 }

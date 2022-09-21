@@ -34,7 +34,10 @@ func NewProducer(config *config.Configuration) (*kafka.Producer, error) {
 	return producer, nil
 }
 
+// TODO Add Producible interface and add this function as a method
+// TODO Add Consumible intarface and add Consume function as a method
 func Produce(producer *kafka.Producer, topic string, value interface{}, key string, headers ...kafka.Header) error {
+	// TODO Add here validation
 	marshalledValue, err := json.Marshal(value)
 	if err != nil {
 		return err
