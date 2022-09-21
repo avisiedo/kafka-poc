@@ -9,6 +9,7 @@ ZOOKEEPER_CLIENT_PORT ?= 2181
 KAFKA_TOPICS ?= repos-introspect
 KAFKA_CONFIG_DIR ?= $(PROJECT_DIR)/builds/kafka/config
 KAFKA_DATA_DIR ?= $(PROJECT_DIR)/tests/kafka/data
+KAFKA_GROUP_ID ?= content-sources
 
 # https://kafka.apache.org/quickstart
 
@@ -57,6 +58,12 @@ kafka-down:  ## Stop local kafka infra
 	! $(DOCKER) container inspect zookeeper &> /dev/null || $(DOCKER) container stop zookeeper
 	$(DOCKER) container prune -f
 
+.PHONY: kafka-clean
+kafka-clean: kafka-down
+	export TMP="$(KAFKA_DATA_DIR)"; [ "$${TMP#$(PROJECT_DIR)/}" != "$${TMP}" ] \
+	    || { echo "error:KAFKA_DATA_DIR should belong to $(PROJECT_DIR)"; exit 1; }
+	rm -rf "$(KAFKA_DATA_DIR)"
+
 .PHONY: kafka-cli
 kafka-cli:  ## Open an interactive shell in kafka container
 	! $(DOCKER) container inspect kafka &> /dev/null || $(DOCKER) exec -it --workdir /opt/kafka/bin kafka /bin/bash
@@ -86,12 +93,20 @@ kafka-topics-describe:  ## Execute kafka-topics.sh for KAFKA_TOPICS
 	    $(DOCKER) exec kafka /opt/kafka/bin/kafka-topics.sh --describe --topic $$topic --bootstrap-server localhost:9092; \
 	done
 
+KAFKA_PROPERTIES ?= \
+  --property print.key=true \
+  --property print.partition=true \
+  --property print.headers=true
+
 .PHONY: kafka-topic-consume
 kafka-topic-consume: KAFKA_TOPIC ?= $(firstword $(KAFKA_TOPICS))
+kafka-topic-consume:
 kafka-topic-consume:  ## Execute kafka-console-consume.sh inside the kafka container for KAFKA_TOPIC (singular)
 	@[ "$(KAFKA_TOPIC)" != "" ] || { echo "error:KAFKA_TOPIC cannot be empty"; exit 1; }
 	$(DOCKER) exec kafka \
 	  /opt/kafka/bin/kafka-console-consumer.sh \
-	  --property print.key=true \
+	  $(KAFKA_PROPERTIES) \
 	  --topic $(KAFKA_TOPIC) \
 	  --bootstrap-server localhost:9092
+
+#	  --group $(KAFKA_GROUP_ID) \
