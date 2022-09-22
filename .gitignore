@@ -7,7 +7,8 @@ configs/bonfire-local.yaml
 
 # Visual Studio Code IDE related files
 **/__debug_bin
-.vscode
+.vscode/**
+!.vscode/launch.json
 
 # Kafka data directory
 tests/kafka/data
