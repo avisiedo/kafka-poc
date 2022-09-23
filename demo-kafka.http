@@ -7,15 +7,15 @@ GET http://localhost:8000/ping
 ### Write message
 
 POST http://localhost:8000/kafka
+X-Rh-Identity: eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciIsImFjY291bnRfbnVtYmVyIjoiODkyMzQ3OCIsIm9yZ19pZCI6Ijk5OTMzMyJ9fQ==
+X-Rh-Insights-Request-Id: 
 
 {
-    "org_id": "92934",
+    "org_id": "acme",
     "request_id": "9823ndai732",
     "b64_identity": "eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciwiYWNjb3VudF9udW1iZXIiOiI5NDc5MjMifX0=",
     "state": "Pending",
-    "url": "myprotocol:#//www.google.com",
-    "status": "Valid",
-    "anyfield": "anyvalue"
+    "url": "myprotocol:#//www.google.com"
 }
 
 ### Read all the messages
