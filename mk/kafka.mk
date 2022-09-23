@@ -27,6 +27,7 @@ kafka-up:  ## Start local kafka containers
 	  -v "$(KAFKA_CONFIG_DIR):/tmp/config:z" \
 	  -p 8778:8778 \
 	  -p 9092:9092 \
+	  -p 2181:2181 \
 	  --health-cmd /opt/kafka/scripts/zookeeper-healthcheck.sh \
 	  --health-interval 5s \
 	  --health-retries 10 \
@@ -106,6 +107,7 @@ kafka-topic-consume:  ## Execute kafka-console-consume.sh inside the kafka conta
 	$(DOCKER) exec kafka \
 	  /opt/kafka/bin/kafka-console-consumer.sh \
 	  $(KAFKA_PROPERTIES) \
+	  --group $(KAFKA_GROUP_ID) \
 	  --topic $(KAFKA_TOPIC) \
 	  --bootstrap-server localhost:9092
 
