@@ -8,15 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"my-test-app/pkg/config"
-	"my-test-app/pkg/db"
 	"my-test-app/pkg/event"
-	"my-test-app/pkg/event/handler"
 	"my-test-app/pkg/event/message"
 	"my-test-app/pkg/event/schema"
 	"my-test-app/pkg/utils"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -28,13 +25,16 @@ import (
 	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
 )
 
+// echo -n 'my-json-values' | base64 -w0
+const XRhIdentity = "eyJpZGVudGl0eSI6eyJ0eXBlIjoidXNlciIsImFjY291bnRfbnVtYmVyIjoiODkyMzQ3OCIsIm9yZ19pZCI6Ijk5OTMzMyJ9fQ=="
+
 var schemas schema.TopicSchemas
-var consumer *kafka.Consumer = nil
+
 var producer *kafka.Producer = nil
 
 type Widget struct {
 	Key     string
-	Header  message.HeaderMessage
+	Header  message.Header
 	Payload message.IntrospectRequestMessage
 }
 
@@ -76,14 +76,10 @@ func getTopics(config *config.Configuration) ([]string, error) {
 func getKafkaReader(config *config.Configuration) (*kafka.Consumer, error) {
 	var (
 		err      error
-		topics   []string
 		consumer *kafka.Consumer
 	)
 
-	if topics, err = getTopics(config); err != nil {
-		return nil, fmt.Errorf("[getKafkaReader] error retrieving the topic: %w", err)
-	}
-	if consumer, err = event.NewConsumer(context.Background(), config, topics); err != nil {
+	if consumer, err = event.NewConsumer(config); err != nil {
 		return nil, fmt.Errorf("[getKafkaReader] error creating consumer: %w", err)
 	}
 
@@ -111,30 +107,25 @@ func initKafka() {
 
 	producer, err = getKafkaWriter(cfg)
 	utils.DieOnError(err)
-	consumer, err = event.NewConsumer(
-		context.Background(),
-		cfg,
-		cfg.Kafka.Topics,
-	)
+	// ctx := context.Background()
+	// consumer, err = event.NewConsumer(cfg)
 	utils.DieOnError(err)
 
-	ctx := context.Background()
-
-	err = db.Connect()
-	utils.DieOnError(err)
-	dbConnector := db.DB
-	handler := handler.NewIntrospectHandler(dbConnector)
-	go func() {
-		event.Start(ctx, cfg, dbConnector, handler)
-		log.Logger.Info().Msgf("[initKafka] kafka consumer loop exited")
-	}()
+	// // Start consumer service
+	// err = db.Connect()
+	// utils.DieOnError(err)
+	// dbConnector := db.DB
+	// handler := handler.NewIntrospectHandler(dbConnector)
+	// go func() {
+	// 	event.Start(ctx, cfg, dbConnector, handler)
+	// 	log.Logger.Info().Msgf("[initKafka] kafka consumer loop exited")
+	// }()
 }
 
 func sendMessage(context context.Context, writer *kafka.Producer, widget *Widget) error {
 	var (
-		err    error
-		header kafka.Header
-		topic  string
+		err   error
+		topic string
 	)
 
 	if widget == nil {
@@ -143,81 +134,86 @@ func sendMessage(context context.Context, writer *kafka.Producer, widget *Widget
 
 	// Validate Payload
 	topic = schema.TopicIntrospect
-	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
+	if err = schemas[topic][schema.SchemaIntrospectKey].Validate(widget.Payload); err != nil {
 		return fmt.Errorf("[sendMessage] Payload failed schema validation: %w", err)
 	}
 
 	// Compose message
-	var key string = widget.Key
-	header.Key = "event"
-	header.Value = []byte(widget.Header.Event)
-	var msg message.IntrospectRequestMessage
-	msg.B64Identity = widget.Payload.B64Identity
-	msg.OrgId = widget.Payload.OrgId
-	msg.RequestId = widget.Payload.RequestId
-	msg.State = widget.Payload.State
+	var (
+		key string = widget.Key
+		msg message.IntrospectRequestMessage
+		// headers []kafka.Header
+	)
+	// for key, value := range widget.Header {
+	// 	headers = append(headers, kafka.Header{
+	// 		Key:   string(key),
+	// 		Value: []byte(value),
+	// 	})
+	// }
 	msg.Url = widget.Payload.Url
+	msg.State = widget.Payload.State
 
-	if err = event.Produce(producer, topic, msg, key, header); err != nil {
+	if err = event.Produce(producer, topic, key, msg, widget.Header.GetAll()...); err != nil {
 		return err
 	}
 	return nil
 }
 
-func readMessage(c context.Context, reader *kafka.Consumer) (*Widget, error) {
-	type b64string struct {
-		Value string `json:"string"`
-	}
-	var (
-		err    error
-		msg    *kafka.Message
-		widget *Widget
-		topic  string
-	)
-	if c == nil {
-		return nil, fmt.Errorf("[readMessage] context is nil")
-	}
-	if msg, err = consumer.ReadMessage(1 * time.Second); err != nil {
-		return nil, fmt.Errorf("[readMessage] error awaiting to read a message: %w", err)
-	}
+// func readMessage(c context.Context, reader *kafka.Consumer) (*Widget, error) {
+// 	type b64string struct {
+// 		Value string `json:"string"`
+// 	}
+// 	var (
+// 		err    error
+// 		msg    *kafka.Message
+// 		widget *Widget
+// 		topic  string
+// 	)
+// 	if c == nil {
+// 		return nil, fmt.Errorf("[readMessage] context is nil")
+// 	}
+// 	// for {
+// 	// 	if msg, err = consumer.ReadMessage(1 * time.Second); err != nil {
+// 	// 		if err.(kafka.Error).Code() != kafka.ErrTimedOut {
+// 	// 			return nil, fmt.Errorf("[readMessage] error awaiting to read a message: %w", err)
+// 	// 		}
+// 	// 		log.Logger.Debug().Msg("[readMessage] timeout reading kafka message")
+// 	// 		continue
+// 	// 	}
+// 	// 	break
+// 	// }
 
-	// Handle header
-	widget = &Widget{
-		Key: string(msg.Key),
-	}
-	for _, header := range msg.Headers {
-		if header.Key == "header" {
-			if err = json.Unmarshal(header.Value, &widget.Header); err != nil {
-				return nil, fmt.Errorf("[readMessage] error unmarshalling Header: %w", err)
-			}
-		}
-	}
-	topic = *msg.TopicPartition.Topic
-	if err = schemas[topic][schema.SchemaHeaderKey].Validate(widget.Header); err != nil {
-		return nil, fmt.Errorf("[readMessage] Header failed validation: %w", err)
-	}
+// 	if msg == nil {
+// 		return nil, fmt.Errorf("[readMessage] received a nil message")
+// 	}
 
-	// Handle payload
+// 	// Handle header
+// 	widget = &Widget{
+// 		Key: string(msg.Key),
+// 	}
+// 	for _, header := range msg.Headers {
+// 		if header.Key == "event" {
+// 			widget.Header[].Event = string(header.Value)
+// 		}
+// 	}
+// 	topic = *msg.TopicPartition.Topic
+// 	if err = schemas[topic][schema.SchemaHeaderKey].Validate(widget.Header); err != nil {
+// 		return nil, fmt.Errorf("[readMessage] Header failed validation: %w", err)
+// 	}
 
-	var b64str string
-	var b64decoded []byte
-	if err = json.Unmarshal(msg.Value, &b64str); err != nil {
-		return nil, fmt.Errorf("[readMessage] Payload unmarshall error: %w", err)
-	}
-	if b64decoded, err = b64.StdEncoding.DecodeString(b64str); err != nil {
-		return nil, fmt.Errorf("[readMessage] Decoding base64 message value: %w", err)
-	}
-	if err = json.Unmarshal([]byte(b64decoded), &widget.Payload); err != nil {
-		return nil, fmt.Errorf("[readMessage] Payload unmarshall error: %w", err)
-	}
-	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
-		return nil, fmt.Errorf("[readMessage] Payload failed validation: %w", err)
-	}
+// 	// Handle payload
+// 	if err = widget.Payload.UnmarshalJSON(msg.Value); err != nil {
+// 		return nil, fmt.Errorf("[readMessage] Payload unmarshall error: %w", err)
+// 	}
+// 	if err = schemas[topic][schema.SchemaRequestKey].Validate(widget.Payload); err != nil {
+// 		return nil, fmt.Errorf("[readMessage] Payload failed validation: %w", err)
+// 	}
 
-	// TODO Actions for the message comes here
+// 	// TODO Actions for the message comes here
+// 	log.Debug().Msg("[readMessage] A message was received and validated; TODO process it")
 
-	return widget, nil
-}
+// 	return widget, nil
+// }
 
 func generateRequestId() string {
 	var (
@@ -234,9 +230,9 @@ func generateRequestId() string {
 }
 
 func apiServer(pingOnly bool) {
-	var (
-		err error
-	)
+	// var (
+	// 	err error
+	// )
 
 	initKafka()
 
@@ -247,27 +243,17 @@ func apiServer(pingOnly bool) {
 		})
 	})
 	if !pingOnly {
-
-		r.GET("/kafka", func(c *gin.Context) {
-			var (
-				// msg    kafka.Message
-				// err    error
-				widget *Widget
-			)
-			if widget, err = readMessage(c, consumer); err != nil {
-				c.AbortWithError(http.StatusInternalServerError, err)
-				return
-			}
-
-			c.JSON(http.StatusOK, widget)
-		})
 		r.POST("/kafka", func(c *gin.Context) {
 			var (
-				widget            Widget
+				widget Widget = Widget{
+					Key:    "",
+					Header: message.Header{},
+				}
 				headerSerialized  []byte
 				payloadSerialized []byte
+				err               error
 			)
-			if err := c.BindJSON(&widget.Payload); err != nil {
+			if err = c.BindJSON(&widget.Payload); err != nil {
 				c.JSON(http.StatusBadRequest, err.Error())
 				return
 			}
@@ -275,8 +261,24 @@ func apiServer(pingOnly bool) {
 			if widget.Key == "" {
 				widget.Key = uuid.NewString()
 			}
-			widget.Header.Event = "Request"
-			widget.Payload.RequestId = generateRequestId()
+			var requestId string = c.GetHeader(string(message.HdrXRhInsightsRequestId))
+			if requestId == "" {
+				requestId = generateRequestId()
+			}
+			var identity string = c.GetHeader(string(message.HdrXRhIdentity))
+			if identity == "" {
+				identity = XRhIdentity
+			}
+			widget.Header.Set(
+				message.HdrType, message.HdrTypeIntrospect)
+			widget.Header.Set(
+				message.HdrXRhInsightsRequestId,
+				requestId,
+			)
+			widget.Header.Set(
+				message.HdrXRhIdentity,
+				identity,
+			)
 			if err := sendMessage(c, producer, &widget); err != nil {
 				c.JSON(http.StatusInternalServerError, err.Error())
 				return

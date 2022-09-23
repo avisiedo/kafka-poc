@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	config "my-test-app/pkg/config"
 	"my-test-app/pkg/db"
 	"my-test-app/pkg/event"
@@ -17,8 +16,7 @@ func GetDatabase(cfg *config.Configuration) *gorm.DB {
 
 func main() {
 	cfg := config.Get()
-	ctx := context.Background()
 	db := GetDatabase(cfg)
 	handler := handler.NewIntrospectHandler(db)
-	event.Start(ctx, cfg, db, handler)
+	event.Start(cfg, handler)
 }
