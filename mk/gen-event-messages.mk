@@ -22,15 +22,7 @@ SCHEMA_JSON_FILES := $(patsubst $(EVENT_SCHEMA_DIR)/%.yaml,$(EVENT_SCHEMA_DIR)/%
 .PHONY: gen-event-messages
 gen-event-messages: $(GOJSONSCHEMA) $(SCHEMA_JSON_FILES)  ## Generate event messages from schemas
 	@[ -e "$(EVENT_MESSAGE_DIR)" ] || mkdir -p "$(EVENT_MESSAGE_DIR)"
-
-	$(GOJSONSCHEMA) -p message "$(EVENT_SCHEMA_DIR)/header.message.json" -o "$(EVENT_MESSAGE_DIR)/header.types.gen.go"
 	$(GOJSONSCHEMA) -p message "$(EVENT_SCHEMA_DIR)/introspectRequest.message.json" -o "$(EVENT_MESSAGE_DIR)/introspect_request.types.gen.go"
-
-
-# .PHONY: gen-event-messages-json
-# gen-event-messages-json: $(patsubst $(EVENT_SCHEMA_DIR)/%.yaml,$(EVENT_SCHEMA_DIR)/%.json,$(wildcard $(EVENT_SCHEMA_DIR)/*.yaml))
-
-# $(SCHEMA_JSON_FILES): $(SCHEMA_YAML_FILES)
 
 $(EVENT_SCHEMA_DIR)/%.json: $(EVENT_SCHEMA_DIR)/%.yaml
 	@[ -e "$(EVENT_MESSAGE_DIR)" ] || mkdir -p "$(EVENT_MESSAGE_DIR)"
