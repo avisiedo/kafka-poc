@@ -55,6 +55,9 @@ type KafkaConfig struct {
 		Protocol string
 	}
 	Request struct {
+		Timeout struct {
+			Ms int
+		}
 		Required struct {
 			Acks int
 		}
@@ -136,6 +139,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.name", "")
 	v.SetDefault("certs.cert_path", "")
 	v.SetDefault("options.paged_rpm_inserts_limit", DefaultPagedRpmInsertsLimit)
+
+	AddEventConfigDefaults(v)
 }
 
 func Load() {
