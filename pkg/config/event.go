@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-func AddEventConfig(options *viper.Viper) {
+func AddEventConfigDefaults(options *viper.Viper) {
 	options.SetDefault("kafka.timeout", 10000)
-	options.SetDefault("kafka.group.id", "repo-introspect")
+	options.SetDefault("kafka.group.id", "content-sources")
 	options.SetDefault("kafka.auto.offset.reset", "latest")
 	options.SetDefault("kafka.auto.commit.interval.ms", 5000)
 	options.SetDefault("kafka.request.required.acks", -1) // -1 == "all"
