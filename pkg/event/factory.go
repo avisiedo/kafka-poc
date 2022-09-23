@@ -1,32 +1,64 @@
 package event
 
 import (
-	"context"
 	"my-test-app/pkg/config"
-	"my-test-app/pkg/event/schema"
-	"my-test-app/pkg/utils"
 
-	"gorm.io/gorm"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/rs/zerolog/log"
 )
 
 // Adapted from: https://github.com/RedHatInsights/playbook-dispatcher/blob/master/internal/response-consumer/main.go#L21
-func Start(
-	ctx context.Context,
-	cfg *config.Configuration,
-	db *gorm.DB,
-	handler Eventable,
-) {
+// func Start(
+// 	ctx context.Context,
+// 	cfg *config.Configuration,
+// 	handler Eventable,
+// ) {
+// 	var (
+// 		// schemas schema.TopicSchemas
+// 		err error
+// 	)
+// 	// schemas, err = schema.LoadSchemas()
+// 	// utils.DieOnError(err)
+
+// 	consumer, err := NewConsumer(ctx, cfg)
+// 	utils.DieOnError(err)
+
+// 	start := NewConsumerEventLoop(ctx, consumer /* nil, nil, schemas*/, handler.OnMessage)
+// 	start()
+// }
+
+func Start(config *config.Configuration, handler Eventable) {
 	var (
-		schemas schema.TopicSchemas
-		err     error
+		err error
+		// msg      *kafka.Message
+		consumer *kafka.Consumer
 	)
-	schemas, err = schema.LoadSchemas()
-	utils.DieOnError(err)
 
-	topics := cfg.Kafka.Topics
-	consumer, err := NewConsumer(ctx, cfg, topics)
-	utils.DieOnError(err)
+	if consumer, err = NewConsumer(config); err != nil {
+		log.Logger.Panic().Msg("[Start] error creating consumer")
+		return
+	}
+	defer consumer.Close()
 
-	start := NewConsumerEventLoop(ctx, consumer /* nil, nil, */, schemas, handler.OnMessage)
+	start := NewConsumerEventLoop(consumer, handler)
 	start()
+
+	// for {
+	// 	// Message wait loop
+	// 	for {
+	// 		if msg, err = consumer.ReadMessage(1 * time.Second); err != nil {
+	// 			if err.(kafka.Error).Code() != kafka.ErrTimedOut {
+	// 				log.Logger.Panic().Msgf("[readMessage] error awaiting to read a message: %w", err)
+	// 				return
+	// 			}
+	// 			log.Logger.Debug().Msg("[readMessage] timeout reading kafka message")
+	// 			continue
+	// 		}
+	// 		break
+	// 	}
+
+	// 	// Dispatch message
+	// 	handler.OnMessage(ctx, msg)
+	// }
+
 }

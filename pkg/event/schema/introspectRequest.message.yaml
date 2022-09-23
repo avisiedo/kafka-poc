@@ -1,29 +1,18 @@
 # Message schema for introspectRepository
 $schema: "http://json-schema.org/draft-07/schema#"
-$id: "https://github.com/content-services/content-sources-backend/schema/introspectRepository.message.yaml"
+$id: "https://github.com/content-services/content-sources-backend/api/introspectRepository.message.yaml"
 # $ref: "#/definitions/Introspect"
 title: Kafka Message Schemas
 description: Schema for the introspect repository kafka message
 type: object
-additionalProperties: false
+additionalProperties: true
 properties:
-  org_id:
-    type: string
-  request_id:
-    description: The request id for distributed tracing
-    type: string
-    # TODO Search for the request-id format
-    # pattern:
-  b64_identity:
-    description: The x-rh-identity coded in base64
-    type: string
-    format: base64
-    # https://regex101.com/r/cP6rU8/1
-    # pattern: |
-    #   /^[A-Z0-9\+\/]*=?$/i
   url:
     description: The base url for the repository to be introspected
     type: string
+    # TODO Pattern is not implemented for the code generator that is used
+    #      pattern field is according to the ECMA-262 regular expression dialect ()
+    #      however golang use the syntax accepted by RE2 (https://github.com/google/re2/wiki/Syntax)
     # TODO add format: regex and the pattern to be matched
     # format: regex
     # pattern: |
@@ -40,8 +29,8 @@ properties:
     - Valid
   # TODO Add the new Repository fields
 required:
-  - org_id
-  - request_id
-  - b64_identity
+  # - org_id
+  # - request_id
+  # - b64_identity
   - url
   - state

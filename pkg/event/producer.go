@@ -10,7 +10,6 @@ import (
 
 // https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
 
-// func NewProducer(config *viper.Viper) (*kafka.Producer, error) {
 func NewProducer(config *config.Configuration) (*kafka.Producer, error) {
 
 	kafkaConfigMap := &kafka.ConfigMap{
@@ -36,8 +35,8 @@ func NewProducer(config *config.Configuration) (*kafka.Producer, error) {
 
 // TODO Add Producible interface and add this function as a method
 // TODO Add Consumible intarface and add Consume function as a method
-func Produce(producer *kafka.Producer, topic string, value interface{}, key string, headers ...kafka.Header) error {
-	// TODO Add here validation
+func Produce(producer *kafka.Producer, topic string, key string, value interface{}, headers ...kafka.Header) error {
+
 	marshalledValue, err := json.Marshal(value)
 	if err != nil {
 		return err

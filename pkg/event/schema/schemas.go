@@ -15,6 +15,15 @@ package schema
 // To validate the schemas against a data structure is
 // used: https://github.com/qri-io/jsonschema
 //
+// Just to mention that 'pattern' does not work into the validation.
+// The regular expressions are different in ECMA Script and GoLang,
+// but maybe this library could make the differences work:
+// https://github.com/dlclark/regexp2#ecmascript-compatibility-mode
+// anyway that would be something to be added as a PR to some of the
+// above libraries; however, into the above library it is mentioned
+// that it deal with ASCII, but not very well with unicode. That
+// is a concern, more when using for message validation that could
+// be a source of bugs and vulnerabilities.
 
 import (
 	"context"
@@ -27,24 +36,24 @@ import (
 )
 
 const (
-	TopicIntrospect  = "repos-introspect"
-	SchemaHeaderKey  = "header"
-	SchemaRequestKey = "request"
+	TopicIntrospect     = "repos-introspect"
+	SchemaHeaderKey     = "header"
+	SchemaIntrospectKey = "Introspect"
 )
 
 // https://pkg.go.dev/embed
 
-//go:embed "header.message.json"
-var schemaHeader string
+// //go:embed "header.message.json"
+// var schemaHeader string
 
 //go:embed "introspectRequest.message.json"
-var schemaMessageRequest string
+var schemaMessageIntrospect string
 
 var (
 	schemaKey2JsonSpec = map[string]map[string]string{
 		TopicIntrospect: {
-			SchemaHeaderKey:  schemaHeader,
-			SchemaRequestKey: schemaMessageRequest,
+			// SchemaHeaderKey:  schemaHeader,
+			SchemaIntrospectKey: schemaMessageIntrospect,
 		},
 	}
 )
